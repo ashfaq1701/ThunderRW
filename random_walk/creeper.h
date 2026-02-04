@@ -353,6 +353,7 @@ template<class F> void *uniform_compute(void *ptr) {
     AMAC_uniform_frame frames[SEARCH_RING_SIZE];
 #endif
 #endif
+    log_info("Thread %d starting with %d walkers (ring size %d)", p->id_, num_walkers, RING_SIZE);
     assert(RING_SIZE < num_walkers);
     sfmt_init_gen_rand(&sfmt, p->id_);
 
@@ -705,6 +706,7 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
      * Initialize the resource...
      */
     int num_threads = g_num_threads;
+    log_info("Total walkers: %zu across %d thread(s)", walkers.size(), num_threads);
 
     double** weight_buffer = nullptr;
     AliasSlot** alias_slot_buffer = nullptr;
@@ -731,6 +733,10 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     for (int i = 0; i < num_threads; ++i) {
         tasks[i].first = walkers.data() + i * length;
         tasks[i].second = i == (num_threads - 1) ? walkers.size() - i * length : length;
+        log_info("Thread %d assigned %d walkers", i, tasks[i].second);
+        if (tasks[i].second <= RING_SIZE) {
+            log_warn("Thread %d has %d walkers <= ring size %d; steps may be zero or undefined", i, tasks[i].second, RING_SIZE);
+        }
     }
 
     /**
