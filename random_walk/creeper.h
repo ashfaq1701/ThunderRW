@@ -784,20 +784,34 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
         pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
 
         if (g_para.execution_ == Uniform) {
-            pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (uniform) rc=%d", i, create_rc);
+            }
         }
         else if (g_para.execution_ == Static) {
-            pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (static) rc=%d", i, create_rc);
+            }
         }
         else {
-            pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (dynamic) rc=%d", i, create_rc);
+            }
         }
     }
 
 
     uint64_t step_count = 0;
     for (int i = 0; i < num_threads; ++i) {
-        pthread_join(threads[i], NULL);
+        log_info("Waiting to join thread %d", i);
+        int join_rc = pthread_join(threads[i], NULL);
+        if (join_rc != 0) {
+            log_error("Thread %d join failed rc=%d", i, join_rc);
+        }
+        log_info("Thread %d joined with step_count=%zu", i, parameters[i].step_count_);
         step_count += parameters[i].step_count_;
     }
 
