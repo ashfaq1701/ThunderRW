@@ -7,6 +7,7 @@
 
 #include <pthread.h>
 #include <emmintrin.h>
+#include <fstream>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -20,6 +21,33 @@
 #include "alias_sampling.h"
 #include "rejection_sampling.h"
 #include "linux-perf-events.h"
+
+extern std::string g_walk_output_file;
+
+inline void dump_walks_to_file(const std::vector<WalkerMeta>& walkers, const std::string& output_file) {
+    std::ofstream out(output_file);
+    if (!out.is_open()) {
+        log_info("Failed to open walk output file %s", output_file.c_str());
+        return;
+    }
+
+    for (const auto& walker : walkers) {
+        bool first = true;
+        for (int i = 0; i < walker.length_; ++i) {
+            auto vertex = walker.seq_[i];
+            if (vertex == -1) {
+                break;
+            }
+
+            if (!first) {
+                out << ' ';
+            }
+            out << vertex;
+            first = false;
+        }
+        out << '\n';
+    }
+}
 
 template<class F> void static_gather(Graph* graph, intT v, F &f, double* w) {
     // Loop over the neighbors of current vertex and apply the weight function to each of them.
@@ -805,6 +833,11 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     log_info("Walking time (seconds): %.6lf", walking_time);
     log_info("Num of steps: %zu", step_count);
     log_info("Throughput (steps per second): %.2lf", step_count / walking_time);
+
+    if (!g_walk_output_file.empty() && g_para.length_ > 0) {
+        log_info("Dump walks into file %s", g_walk_output_file.c_str());
+        dump_walks_to_file(walkers, g_walk_output_file);
+    }
 
     log_info("Release...");
 
