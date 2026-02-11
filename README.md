@@ -114,6 +114,28 @@ edge label array into main memory. `-s` is to set the meta path schema.
 ./build/random_walk/metapath.out -f sample_dataset/amazon -n 10 -el -s 0,1,2,3,4
 ```
 
+
+You can persist generated walk sequences by passing `-of <output_file>`. The
+output is plain text where each line is one walk, vertex IDs are separated by a
+single space, no trailing sentinel is written, and a walk stops early if an
+internal value is `-1`.
+
+Sample command to save walks:
+
+Use `-of` (single leading dash), not `---of`.
+
+```zsh
+./build/random_walk/deepwalk.out -f sample_dataset/amazon -n 10 -ew -l 80 -of /tmp/deepwalk_walks.txt
+```
+
+Example output:
+
+```text
+12 98 4 77 31
+5 44
+203 17 9 9 41 2
+```
+
 ## Configuration
 
 In `random_walk/types.h`, you can disable the step interleaving technique

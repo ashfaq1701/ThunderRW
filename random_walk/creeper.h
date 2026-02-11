@@ -7,6 +7,8 @@
 
 #include <pthread.h>
 #include <emmintrin.h>
+#include <fstream>
+#include <algorithm>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -20,6 +22,45 @@
 #include "alias_sampling.h"
 #include "rejection_sampling.h"
 #include "linux-perf-events.h"
+
+extern std::string g_walk_output_file;
+
+inline int exported_walk_length(const WalkerMeta& walker) {
+    if (walker.length_ <= 0) {
+        return 0;
+    }
+
+    if (g_para.length_ <= 0) {
+        return walker.length_;
+    }
+
+    return std::min(walker.length_, g_para.length_);
+}
+
+inline void dump_walks_to_file(const std::vector<WalkerMeta>& walkers, const std::string& output_file) {
+    std::ofstream out(output_file);
+    if (!out.is_open()) {
+        log_info("Failed to open walk output file %s", output_file.c_str());
+        return;
+    }
+
+    for (const auto& walker : walkers) {
+        bool first = true;
+        for (int i = 0; i < walker.length_; ++i) {
+            auto vertex = walker.seq_[i];
+            if (vertex == -1) {
+                break;
+            }
+
+            if (!first) {
+                out << ' ';
+            }
+            out << vertex;
+            first = false;
+        }
+        out << '\n';
+    }
+}
 
 template<class F> void static_gather(Graph* graph, intT v, F &f, double* w) {
     // Loop over the neighbors of current vertex and apply the weight function to each of them.
@@ -307,14 +348,12 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 // If the walker completes, then set the slot as empty.
                 slot.empty_ = true;
                 num_completed_walkers += 1;
-#ifdef LOG_SEQUENCE
-                if (slot.seq_ != nullptr) {
+                if (!g_walk_output_file.empty() && slot.seq_ != nullptr) {
+                    auto export_length = exported_walk_length(slot.w_);
                     walkers[slot.local_id_].seq_ = slot.seq_;
-                    walkers[slot.local_id_].length_ = slot.w_.length_;
-                    slot.seq_ = slot.seq_ + slot.w_.length_;
-
+                    walkers[slot.local_id_].length_ = export_length;
+                    slot.seq_ = slot.seq_ + export_length;
                 }
-#endif
             }
         }
 
@@ -743,14 +782,15 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
 
             seq_buffer[i] = new intT*[RING_SIZE];
             for (int j = 0; j < RING_SIZE; ++j) {
-#ifdef LOG_SEQUENCE
-                int local_walk_num = tasks[i].second;
-                // 1.15 as the buffer for the walker with variant length.
-                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num * 1.15 / RING_SIZE * g_para.length_);
-                seq_buffer[i][j] = new intT[per_slot_buffer_size];
-#else
-                seq_buffer[i][j] = new intT[g_para.length_];
-#endif
+                if (!g_walk_output_file.empty()) {
+                    int local_walk_num = tasks[i].second;
+                    auto per_slot_walk_capacity = static_cast<size_t>((local_walk_num + RING_SIZE - 1) / RING_SIZE + 1);
+                    auto per_slot_buffer_size = per_slot_walk_capacity * static_cast<size_t>(g_para.length_);
+                    seq_buffer[i][j] = new intT[per_slot_buffer_size];
+                }
+                else {
+                    seq_buffer[i][j] = new intT[g_para.length_];
+                }
             }
         }
     }
@@ -805,6 +845,11 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     log_info("Walking time (seconds): %.6lf", walking_time);
     log_info("Num of steps: %zu", step_count);
     log_info("Throughput (steps per second): %.2lf", step_count / walking_time);
+
+    if (!g_walk_output_file.empty() && g_para.length_ > 0) {
+        log_info("Dump walks into file %s", g_walk_output_file.c_str());
+        dump_walks_to_file(walkers, g_walk_output_file);
+    }
 
     log_info("Release...");
 

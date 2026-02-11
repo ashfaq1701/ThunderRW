@@ -10,6 +10,7 @@
 void execute(Graph &graph, InputParser &cmd_parser);
 
 int g_num_threads = 1;
+std::string g_walk_output_file;
 
 int main(int argc, char *argv[]) {
     assert(RING_SIZE % SMALL_RING_SIZE == 0);
@@ -51,6 +52,11 @@ int main(int argc, char *argv[]) {
 
     if (cmd_parser.check_cmd_option_exists("-rj")) {
         graph.is_edge_weight_rejection_generated_ = true;
+    }
+
+    g_walk_output_file = "";
+    if (!cmd_parser.get_cmd_option("-of").empty()) {
+        g_walk_output_file = cmd_parser.get_cmd_option("-of");
     }
 
     g_num_threads = 1;
