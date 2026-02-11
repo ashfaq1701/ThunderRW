@@ -775,7 +775,11 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
         // set thread affinity.
         CPU_ZERO(&cpus);
         CPU_SET(i, &cpus);
-        pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+        int rc = pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+        if (rc != 0) {
+            pthread_attr_destroy(&attr);
+            pthread_attr_init(&attr);
+        }
 
         if (g_para.execution_ == Uniform) {
             pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
