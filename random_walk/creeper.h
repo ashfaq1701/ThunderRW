@@ -335,16 +335,16 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 // If the walker completes, then set the slot as empty.
                 slot.empty_ = true;
                 num_completed_walkers += 1;
-#ifdef LOG_SEQUENCE
-                if (slot.seq_ != nullptr) {
-                    walkers[slot.local_id_].seq_ = slot.seq_;
-                    walkers[slot.local_id_].length_ = slot.w_.length_;
-                    slot.seq_ = slot.seq_ + slot.w_.length_;
-
-                }
-#endif
             }
         }
+
+#ifdef LOG_SEQUENCE
+        if (slot.empty_ && slot.seq_ != nullptr) {
+            walkers[slot.local_id_].seq_ = slot.seq_;
+            walkers[slot.local_id_].length_ = slot.w_.length_;
+            slot.seq_ = slot.seq_ + slot.w_.length_;
+        }
+#endif
 
         // If the slot is empty, then add a new walker to the ring buffer.
         if (slot.empty_) {
@@ -773,8 +773,9 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
             for (int j = 0; j < RING_SIZE; ++j) {
 #ifdef LOG_SEQUENCE
                 int local_walk_num = tasks[i].second;
-                // 1.15 as the buffer for the walker with variant length.
-                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num * 1.15 / RING_SIZE * g_para.length_);
+                // Each slot may transiently own any subset of thread-local walkers.
+                // Allocate the exact upper bound to avoid ring-slot overflow.
+                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num) * g_para.length_;
                 seq_buffer[i][j] = new intT[per_slot_buffer_size];
 #else
                 seq_buffer[i][j] = new intT[g_para.length_];

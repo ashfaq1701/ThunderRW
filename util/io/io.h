@@ -6,6 +6,7 @@
 #define XTRAGRAPHCOMPUTING_IO_H
 
 #include <vector>
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include "util/log/log.h"
