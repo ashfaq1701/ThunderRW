@@ -7,7 +7,7 @@
 
 #include "config/type_config.h"
 
-// #define LOG_SEQUENCE
+#define LOG_SEQUENCE
 // #define COLLECT_PERF_COUNTER
 
 #define PREFETCH_HINT _MM_HINT_T0
