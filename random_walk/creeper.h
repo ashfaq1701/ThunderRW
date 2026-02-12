@@ -326,6 +326,7 @@ void dynamic_gather(Graph *graph, BufferSlot *ring, F &f, HyperParameter &para, 
 template<class F>
 void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &current_id, int num_walkers,
             WalkerMeta *walkers, F &f, uint64_t &step_count) {
+    const bool record_all_sequences = !g_walk_output_file.empty() && g_para.length_ > 0;
     for (int i = 0; i < RING_SIZE; ++i) {
         BufferSlot& slot = ring[i];
         if (!slot.empty_) {
@@ -344,6 +345,12 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
             walkers[slot.local_id_].length_ = slot.w_.length_;
             slot.seq_ = slot.seq_ + slot.w_.length_;
         }
+#else
+        if (record_all_sequences && slot.empty_ && slot.seq_ != nullptr) {
+            walkers[slot.local_id_].seq_ = slot.seq_;
+            walkers[slot.local_id_].length_ = slot.w_.length_;
+            slot.seq_ = slot.seq_ + slot.w_.length_;
+        }
 #endif
 
         // If the slot is empty, then add a new walker to the ring buffer.
@@ -353,6 +360,10 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 slot.local_id_ = current_id;
                 slot.w_ = walkers[current_id++];
                 slot.w_.seq_ = slot.seq_;
+
+                if (record_all_sequences && slot.seq_ != nullptr) {
+                    walkers[slot.local_id_].seq_ = slot.seq_;
+                }
 
                 if (slot.seq_ != nullptr)
                     slot.seq_[0] = slot.w_.source_;
@@ -482,7 +493,7 @@ template<class F> void *static_compute(void *ptr) {
 
          if (para.length_ > 0) {
              r[i].local_id_ = next;
-             r[i].w_.seq_ = r[i].seq_ = s[i];
+             q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[i];
              r[i].seq_[0] = r[i].w_.source_;
          }
 
@@ -609,7 +620,7 @@ template<class F> void *dynamic_compute(void *ptr) {
 
         if (para.length_ > 0) {
             r[i].local_id_ = next;
-            r[i].w_.seq_ = r[i].seq_ = s[i];
+            q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[i];
             r[i].seq_[0] = r[i].w_.source_;
         }
 
@@ -771,15 +782,22 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
 
             seq_buffer[i] = new intT*[RING_SIZE];
             for (int j = 0; j < RING_SIZE; ++j) {
+                const bool record_all_sequences = !g_walk_output_file.empty();
 #ifdef LOG_SEQUENCE
-                int local_walk_num = tasks[i].second;
-                // Each slot may transiently own any subset of thread-local walkers.
-                // Allocate the exact upper bound to avoid ring-slot overflow.
-                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num) * g_para.length_;
-                seq_buffer[i][j] = new intT[per_slot_buffer_size];
+                const bool use_expanded_buffer = true;
 #else
-                seq_buffer[i][j] = new intT[g_para.length_];
+                const bool use_expanded_buffer = record_all_sequences;
 #endif
+                if (use_expanded_buffer) {
+                    int local_walk_num = tasks[i].second;
+                    // Each slot may transiently own any subset of thread-local walkers.
+                    // Allocate the exact upper bound to avoid ring-slot overflow.
+                    auto per_slot_buffer_size = static_cast<size_t>(local_walk_num) * g_para.length_;
+                    seq_buffer[i][j] = new intT[per_slot_buffer_size];
+                }
+                else {
+                    seq_buffer[i][j] = new intT[g_para.length_];
+                }
             }
         }
     }
