@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <emmintrin.h>
 #include <fstream>
+#include <algorithm>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -773,8 +774,12 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
             for (int j = 0; j < RING_SIZE; ++j) {
 #ifdef LOG_SEQUENCE
                 int local_walk_num = tasks[i].second;
-                // 1.15 as the buffer for the walker with variant length.
-                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num * 1.15 / RING_SIZE * g_para.length_);
+                // 1.15x as headroom for variable walk lengths. Compute in walker units first, then scale by
+                // walk length to avoid truncation-induced under-allocation.
+                auto buffered_walkers = std::max<size_t>(
+                        1,
+                        (static_cast<size_t>(local_walk_num) * 115 + (RING_SIZE * 100 - 1)) / (RING_SIZE * 100));
+                auto per_slot_buffer_size = buffered_walkers * static_cast<size_t>(g_para.length_);
                 seq_buffer[i][j] = new intT[per_slot_buffer_size];
 #else
                 seq_buffer[i][j] = new intT[g_para.length_];
