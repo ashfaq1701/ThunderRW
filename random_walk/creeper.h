@@ -337,11 +337,9 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 slot.empty_ = true;
                 num_completed_walkers += 1;
 #ifdef LOG_SEQUENCE
-                if (slot.seq_ != nullptr) {
-                    walkers[slot.local_id_].seq_ = slot.seq_;
+                if (slot.w_.seq_ != nullptr) {
+                    walkers[slot.local_id_].seq_ = slot.w_.seq_;
                     walkers[slot.local_id_].length_ = slot.w_.length_;
-                    slot.seq_ = slot.seq_ + slot.w_.length_;
-
                 }
 #endif
             }
@@ -353,10 +351,10 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 slot.empty_ = false;
                 slot.local_id_ = current_id;
                 slot.w_ = walkers[current_id++];
-                slot.w_.seq_ = slot.seq_;
+                slot.w_.seq_ = walkers[slot.local_id_].seq_;
 
-                if (slot.seq_ != nullptr)
-                    slot.seq_[0] = slot.w_.source_;
+                if (slot.w_.seq_ != nullptr)
+                    slot.w_.seq_[0] = slot.w_.source_;
             }
         }
     }
@@ -391,7 +389,7 @@ template<class F> void *uniform_compute(void *ptr) {
 
         if (para.length_ > 0) {
             r[i].local_id_ = next;
-            q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[i];
+            q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[next];
             r[i].seq_[0] = r[i].w_.source_;
         }
 
@@ -483,7 +481,7 @@ template<class F> void *static_compute(void *ptr) {
 
          if (para.length_ > 0) {
              r[i].local_id_ = next;
-             r[i].w_.seq_ = r[i].seq_ = s[i];
+             q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[next];
              r[i].seq_[0] = r[i].w_.source_;
          }
 
@@ -610,7 +608,7 @@ template<class F> void *dynamic_compute(void *ptr) {
 
         if (para.length_ > 0) {
             r[i].local_id_ = next;
-            r[i].w_.seq_ = r[i].seq_ = s[i];
+            q[next].seq_ = r[i].w_.seq_ = r[i].seq_ = s[next];
             r[i].seq_[0] = r[i].w_.source_;
         }
 
@@ -770,20 +768,10 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
         seq_buffer = new intT**[num_threads];
         for (int i = 0; i < num_threads; ++i) {
 
-            seq_buffer[i] = new intT*[RING_SIZE];
-            for (int j = 0; j < RING_SIZE; ++j) {
-#ifdef LOG_SEQUENCE
-                int local_walk_num = tasks[i].second;
-                // 1.15x as headroom for variable walk lengths. Compute in walker units first, then scale by
-                // walk length to avoid truncation-induced under-allocation.
-                auto buffered_walkers = std::max<size_t>(
-                        1,
-                        (static_cast<size_t>(local_walk_num) * 115 + (RING_SIZE * 100 - 1)) / (RING_SIZE * 100));
-                auto per_slot_buffer_size = buffered_walkers * static_cast<size_t>(g_para.length_);
-                seq_buffer[i][j] = new intT[per_slot_buffer_size];
-#else
+            int local_walk_num = tasks[i].second;
+            seq_buffer[i] = new intT*[local_walk_num];
+            for (int j = 0; j < local_walk_num; ++j) {
                 seq_buffer[i][j] = new intT[g_para.length_];
-#endif
             }
         }
     }
@@ -863,7 +851,7 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
 
     if (g_para.length_ > 0 && seq_buffer != nullptr) {
         for (int i = 0; i < num_threads; ++i) {
-            for (int j = 0; j < RING_SIZE; ++j) {
+            for (int j = 0; j < tasks[i].second; ++j) {
                 delete[] seq_buffer[i][j];
             }
             delete[] seq_buffer[i];
