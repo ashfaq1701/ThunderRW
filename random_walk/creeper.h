@@ -33,6 +33,11 @@ inline void dump_walks_to_file(const std::vector<WalkerMeta>& walkers, const std
     }
 
     for (const auto& walker : walkers) {
+        if (walker.seq_ == nullptr) {
+            out << '\n';
+            continue;
+        }
+
         bool first = true;
         for (int i = 0; i < walker.length_; ++i) {
             auto vertex = walker.seq_[i];
@@ -772,6 +777,7 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
             seq_buffer[i] = new intT*[local_walk_num];
             for (int j = 0; j < local_walk_num; ++j) {
                 seq_buffer[i][j] = new intT[g_para.length_];
+                tasks[i].first[j].seq_ = seq_buffer[i][j];
             }
         }
     }
