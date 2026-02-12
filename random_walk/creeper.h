@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <emmintrin.h>
 #include <fstream>
+#include <algorithm>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -327,6 +328,7 @@ template<class F>
 void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &current_id, int num_walkers,
             WalkerMeta *walkers, F &f, uint64_t &step_count) {
     const bool record_all_sequences = !g_walk_output_file.empty() && g_para.length_ > 0;
+    const int max_recorded_length = g_para.length_ > 0 ? g_para.length_ : 0;
     for (int i = 0; i < RING_SIZE; ++i) {
         BufferSlot& slot = ring[i];
         if (!slot.empty_) {
@@ -341,15 +343,17 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
 
 #ifdef LOG_SEQUENCE
         if (slot.empty_ && slot.seq_ != nullptr) {
+            const int recorded_length = std::min(slot.w_.length_, max_recorded_length);
             walkers[slot.local_id_].seq_ = slot.seq_;
-            walkers[slot.local_id_].length_ = slot.w_.length_;
-            slot.seq_ = slot.seq_ + slot.w_.length_;
+            walkers[slot.local_id_].length_ = recorded_length;
+            slot.seq_ = slot.seq_ + recorded_length;
         }
 #else
         if (record_all_sequences && slot.empty_ && slot.seq_ != nullptr) {
+            const int recorded_length = std::min(slot.w_.length_, max_recorded_length);
             walkers[slot.local_id_].seq_ = slot.seq_;
-            walkers[slot.local_id_].length_ = slot.w_.length_;
-            slot.seq_ = slot.seq_ + slot.w_.length_;
+            walkers[slot.local_id_].length_ = recorded_length;
+            slot.seq_ = slot.seq_ + recorded_length;
         }
 #endif
 
