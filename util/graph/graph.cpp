@@ -12,6 +12,8 @@
 #include <tuple>
 #include <cassert>
 #include <iostream>
+#include <stdexcept>
+#include <cstring>
 #include "graph.h"
 #include "util/log/log.h"
 
@@ -218,12 +220,35 @@ void Graph::load_csr_partition_file(const std::string &file_path, intT *&partiti
     std::ifstream file(file_path, std::ios::binary);
     uint32_t element_size;
     file.read(reinterpret_cast<char *>(&element_size), 4);
-    assert(element_size == sizeof(intT) && "The size of the element is not equal to that of intT.");
+
+    if (element_size != sizeof(intT)) {
+        assert((element_size == sizeof(int32_t) || element_size == sizeof(int64_t))
+               && "Unsupported partition element size.");
+        log_info("Partition element size (%u) differs from intT size (%zu); converting on load.",
+                 element_size, sizeof(intT));
+    }
     file.read(reinterpret_cast<char *>(&num_partitions_), sizeof(int));
 
-    int64_t size = (num_partitions_ + 1) * element_size;
-    partition = (intT*)malloc(size);
-    file.read(reinterpret_cast<char *>(partition), size);
+    int64_t file_size = (num_partitions_ + 1) * element_size;
+    partition = (intT*)malloc((num_partitions_ + 1) * sizeof(intT));
+
+    if (element_size == sizeof(intT)) {
+        file.read(reinterpret_cast<char *>(partition), file_size);
+    } else {
+        std::vector<char> raw(file_size);
+        file.read(raw.data(), file_size);
+        for (int i = 0; i <= num_partitions_; ++i) {
+            if (element_size == sizeof(int32_t)) {
+                int32_t value;
+                std::memcpy(&value, raw.data() + i * sizeof(int32_t), sizeof(int32_t));
+                partition[i] = static_cast<intT>(value);
+            } else {
+                int64_t value;
+                std::memcpy(&value, raw.data() + i * sizeof(int64_t), sizeof(int64_t));
+                partition[i] = static_cast<intT>(value);
+            }
+        }
+    }
 
     auto end = std::chrono::high_resolution_clock::now();
     log_info("Load partition file time: %.3lf seconds",
@@ -235,16 +260,56 @@ void Graph::load_csr_degree_file(const std::string &file_path, intT *&degree) {
     auto start = std::chrono::high_resolution_clock::now();
 
     std::ifstream file(file_path, std::ios::binary);
+    if (!file.good()) {
+        throw std::runtime_error("Failed to open degree file: " + file_path +
+                                 ". Please run the CSR preprocessing tool first.");
+    }
+
     uint32_t element_size;
     file.read(reinterpret_cast<char *>(&element_size), 4);
 
-    assert( element_size == sizeof(intT) && "The size of the element is not equal to that of intT.");
-    file.read(reinterpret_cast<char *>(&num_vertices_), element_size);
+    if (element_size != sizeof(int32_t) && element_size != sizeof(int64_t)) {
+        file.clear();
+        file.seekg(0, std::ios::beg);
+        element_size = sizeof(intT);
+        log_info("Degree file has no element-size header; using legacy format with intT size (%zu).",
+                 sizeof(intT));
+    } else if (element_size != sizeof(intT)) {
+        log_info("Degree element size (%u) differs from intT size (%zu); converting on load.",
+                 element_size, sizeof(intT));
+    }
+
+    if (element_size == sizeof(int32_t)) {
+        int32_t num_vertices_32;
+        file.read(reinterpret_cast<char *>(&num_vertices_32), sizeof(int32_t));
+        num_vertices_ = static_cast<intT>(num_vertices_32);
+    } else {
+        int64_t num_vertices_64;
+        file.read(reinterpret_cast<char *>(&num_vertices_64), sizeof(int64_t));
+        num_vertices_ = static_cast<intT>(num_vertices_64);
+    }
     file.read(reinterpret_cast<char *>(&num_edges_), sizeof(int64_t));
 
-    uint64_t size = ((uint64_t) num_vertices_) * element_size;
-    degree = (intT*)malloc(size);
-    file.read(reinterpret_cast<char *>(degree), size);
+    uint64_t file_size = ((uint64_t) num_vertices_) * element_size;
+    degree = (intT*)malloc(((uint64_t) num_vertices_) * sizeof(intT));
+
+    if (element_size == sizeof(intT)) {
+        file.read(reinterpret_cast<char *>(degree), file_size);
+    } else {
+        std::vector<char> raw(file_size);
+        file.read(raw.data(), file_size);
+        for (intT i = 0; i < num_vertices_; ++i) {
+            if (element_size == sizeof(int32_t)) {
+                int32_t value;
+                std::memcpy(&value, raw.data() + i * sizeof(int32_t), sizeof(int32_t));
+                degree[i] = static_cast<intT>(value);
+            } else {
+                int64_t value;
+                std::memcpy(&value, raw.data() + i * sizeof(int64_t), sizeof(int64_t));
+                degree[i] = static_cast<intT>(value);
+            }
+        }
+    }
 
     auto end = std::chrono::high_resolution_clock::now();
     log_info("Load degree file time: %.3lf seconds",
