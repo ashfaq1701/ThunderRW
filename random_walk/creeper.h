@@ -7,6 +7,7 @@
 
 #include <pthread.h>
 #include <emmintrin.h>
+#include <fstream>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -686,6 +687,42 @@ template<class F> void *dynamic_compute(void *ptr) {
     return nullptr;
 }
 
+
+inline bool export_walk_sequences(const std::vector<WalkerMeta>& walkers, const std::string& output_path) {
+    if (output_path.empty()) {
+        return true;
+    }
+
+    std::ofstream ofs(output_path);
+    if (!ofs.is_open()) {
+        log_error("Failed to open walk output file: %s", output_path.c_str());
+        return false;
+    }
+
+    for (const auto &walker : walkers) {
+        if (walker.seq_ == nullptr || walker.length_ <= 0) {
+            ofs << '\n';
+            continue;
+        }
+
+        for (int i = 0; i < walker.length_; ++i) {
+            if (i > 0) {
+                ofs << ' ';
+            }
+            ofs << walker.seq_[i];
+        }
+        ofs << '\n';
+    }
+
+    if (!ofs.good()) {
+        log_error("Failed while writing walk output file: %s", output_path.c_str());
+        return false;
+    }
+
+    log_info("Walk sequences exported to %s", output_path.c_str());
+    return true;
+}
+
 template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F f) {
     /**
      * Output the configuration:
@@ -805,6 +842,10 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     log_info("Walking time (seconds): %.6lf", walking_time);
     log_info("Num of steps: %zu", step_count);
     log_info("Throughput (steps per second): %.2lf", step_count / walking_time);
+
+    if (!g_walk_output_path.empty() && g_para.length_ > 0) {
+        export_walk_sequences(walkers, g_walk_output_path);
+    }
 
     log_info("Release...");
 

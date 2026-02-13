@@ -95,10 +95,11 @@ Execute PPR with the following command. `-f` sets the input graph folder and
 ```
 
 Execute DeepWalk with the following command. `-ew` is to load the edge
-weight array into main memory.
+weight array into main memory. `-wo` exports the generated walks in a text
+format where each line is one walk and node IDs are space separated.
 
 ```zsh
-./build/random_walk/deepwalk.out -f sample_dataset/amazon -n 10 -ew
+./build/random_walk/deepwalk.out -f sample_dataset/amazon -n 10 -ew -wo my_walks.txt
 ```
 
 Execute Node2Vec with the following command.
@@ -124,3 +125,14 @@ by `RING_SIZE` and `SEARCH_RING_SIZE`.
 
 You can download the graphs used in our paper by following the
 instructions in Section 6.1.
+
+When `-wo <path>` is set, ThunderRW writes a plain-text walk file with the
+following format:
+
+```text
+node0 node1 node2 ...
+node0 node1 node2 ...
+```
+
+Each line is one walk. This export is streamed directly to the output file to
+avoid extra in-memory copies and to keep the execution safe for large outputs.

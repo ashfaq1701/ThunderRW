@@ -7,6 +7,8 @@
 
 #include "config/type_config.h"
 
+#include <string>
+
 // #define LOG_SEQUENCE
 // #define COLLECT_PERF_COUNTER
 
@@ -108,5 +110,6 @@ struct ThreadParameter {
 
 extern HyperParameter g_para;
 extern int g_num_threads;
+extern std::string g_walk_output_path;
 
 #endif //XTRAGRAPHCOMPUTING_TYPES_H
