@@ -7,9 +7,12 @@
 
 #include "creeper.h"
 
+#include <string>
+
 void execute(Graph &graph, InputParser &cmd_parser);
 
 int g_num_threads = 1;
+std::string g_walk_output_path;
 
 int main(int argc, char *argv[]) {
     assert(RING_SIZE % SMALL_RING_SIZE == 0);
@@ -56,6 +59,10 @@ int main(int argc, char *argv[]) {
     g_num_threads = 1;
     if (!cmd_parser.get_cmd_option("-n").empty()) {
         g_num_threads = std::stoi(cmd_parser.get_cmd_option("-n"));
+    }
+
+    if (!cmd_parser.get_cmd_option("-wo").empty()) {
+        g_walk_output_path = cmd_parser.get_cmd_option("-wo");
     }
 
     graph.is_offset_pair_ = true;

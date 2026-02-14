@@ -7,6 +7,7 @@
 
 #include <pthread.h>
 #include <emmintrin.h>
+#include <fstream>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -307,14 +308,11 @@ void update(Graph *graph, BufferSlot *ring, int &num_completed_walkers, int &cur
                 // If the walker completes, then set the slot as empty.
                 slot.empty_ = true;
                 num_completed_walkers += 1;
-#ifdef LOG_SEQUENCE
-                if (slot.seq_ != nullptr) {
+                if (slot.seq_ != nullptr && !g_walk_output_path.empty()) {
                     walkers[slot.local_id_].seq_ = slot.seq_;
                     walkers[slot.local_id_].length_ = slot.w_.length_;
                     slot.seq_ = slot.seq_ + slot.w_.length_;
-
                 }
-#endif
             }
         }
 
@@ -686,6 +684,42 @@ template<class F> void *dynamic_compute(void *ptr) {
     return nullptr;
 }
 
+
+inline bool export_walk_sequences(const std::vector<WalkerMeta>& walkers, const std::string& output_path) {
+    if (output_path.empty()) {
+        return true;
+    }
+
+    std::ofstream ofs(output_path);
+    if (!ofs.is_open()) {
+        log_error("Failed to open walk output file: %s", output_path.c_str());
+        return false;
+    }
+
+    for (const auto &walker : walkers) {
+        if (walker.seq_ == nullptr || walker.length_ <= 0) {
+            log_error("Encountered walker without valid sequence while exporting.");
+            return false;
+        }
+
+        for (int i = 0; i < walker.length_; ++i) {
+            if (i > 0) {
+                ofs << ' ';
+            }
+            ofs << walker.seq_[i];
+        }
+        ofs << '\n';
+    }
+
+    if (!ofs.good()) {
+        log_error("Failed while writing walk output file: %s", output_path.c_str());
+        return false;
+    }
+
+    log_info("Walk sequences exported to %s", output_path.c_str());
+    return true;
+}
+
 template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F f) {
     /**
      * Output the configuration:
@@ -739,18 +773,22 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     */
     if (g_para.length_ > 0) {
         seq_buffer = new intT**[num_threads];
+        bool export_walk = !g_walk_output_path.empty();
         for (int i = 0; i < num_threads; ++i) {
-
             seq_buffer[i] = new intT*[RING_SIZE];
+            int local_walk_num = tasks[i].second;
+            size_t walks_per_slot = static_cast<size_t>((local_walk_num + RING_SIZE - 1) / RING_SIZE);
+            if (walks_per_slot == 0) {
+                walks_per_slot = 1;
+            }
             for (int j = 0; j < RING_SIZE; ++j) {
-#ifdef LOG_SEQUENCE
-                int local_walk_num = tasks[i].second;
-                // 1.15 as the buffer for the walker with variant length.
-                auto per_slot_buffer_size = static_cast<size_t>(local_walk_num * 1.15 / RING_SIZE * g_para.length_);
-                seq_buffer[i][j] = new intT[per_slot_buffer_size];
-#else
-                seq_buffer[i][j] = new intT[g_para.length_];
-#endif
+                if (export_walk) {
+                    auto per_slot_buffer_size = walks_per_slot * static_cast<size_t>(g_para.length_);
+                    seq_buffer[i][j] = new intT[per_slot_buffer_size];
+                }
+                else {
+                    seq_buffer[i][j] = new intT[g_para.length_];
+                }
             }
         }
     }
@@ -805,6 +843,12 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     log_info("Walking time (seconds): %.6lf", walking_time);
     log_info("Num of steps: %zu", step_count);
     log_info("Throughput (steps per second): %.2lf", step_count / walking_time);
+
+    if (!g_walk_output_path.empty() && g_para.length_ > 0) {
+        if (!export_walk_sequences(walkers, g_walk_output_path)) {
+            log_error("Walk export failed.");
+        }
+    }
 
     log_info("Release...");
 
