@@ -351,6 +351,7 @@ template<class F> void *uniform_compute(void *ptr) {
     AMAC_uniform_frame frames[SEARCH_RING_SIZE];
 #endif
 #endif
+    log_info("Thread %d starting with %d walkers (ring size %d)", p->id_, num_walkers, RING_SIZE);
     assert(RING_SIZE < num_walkers);
     sfmt_init_gen_rand(&sfmt, p->id_);
 
@@ -739,6 +740,7 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
      * Initialize the resource...
      */
     int num_threads = g_num_threads;
+    log_info("Total walkers: %zu across %d thread(s)", walkers.size(), num_threads);
 
     double** weight_buffer = nullptr;
     AliasSlot** alias_slot_buffer = nullptr;
@@ -765,6 +767,10 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
     for (int i = 0; i < num_threads; ++i) {
         tasks[i].first = walkers.data() + i * length;
         tasks[i].second = i == (num_threads - 1) ? walkers.size() - i * length : length;
+        log_info("Thread %d assigned %d walkers", i, tasks[i].second);
+        if (tasks[i].second <= RING_SIZE) {
+            log_warn("Thread %d has %d walkers <= ring size %d; steps may be zero or undefined", i, tasks[i].second, RING_SIZE);
+        }
     }
 
     /**
@@ -820,20 +826,34 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
         }
 
         if (g_para.execution_ == Uniform) {
-            pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (uniform) rc=%d", i, create_rc);
+            }
         }
         else if (g_para.execution_ == Static) {
-            pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (static) rc=%d", i, create_rc);
+            }
         }
         else {
-            pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            int create_rc = pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            if (create_rc != 0) {
+                log_error("Thread %d create failed (dynamic) rc=%d", i, create_rc);
+            }
         }
     }
 
 
     uint64_t step_count = 0;
     for (int i = 0; i < num_threads; ++i) {
-        pthread_join(threads[i], NULL);
+        log_info("Waiting to join thread %d", i);
+        int join_rc = pthread_join(threads[i], NULL);
+        if (join_rc != 0) {
+            log_error("Thread %d join failed rc=%d", i, join_rc);
+        }
+        log_info("Thread %d joined with step_count=%zu", i, parameters[i].step_count_);
         step_count += parameters[i].step_count_;
     }
 
