@@ -106,7 +106,8 @@ template<class F> void static_initialization(Graph* graph, F &f) {
     auto start = std::chrono::high_resolution_clock::now();
 
     if (g_para.sample_ == AliasSampling) {
-        graph->edge_weight_alias_table_ = new AliasSlot[graph->num_edges()];
+        auto alias_size = sizeof(AliasSlot) * static_cast<uint64_t>(graph->num_edges());
+        graph->edge_weight_alias_table_ = (AliasSlot*)malloc(alias_size);
         graph->is_edge_weight_alias_generated_ = true;
 
 #pragma omp parallel
@@ -130,7 +131,8 @@ template<class F> void static_initialization(Graph* graph, F &f) {
         }
     }
     else if (g_para.sample_ == InverseTransformationSampling) {
-        graph->edge_weight_prefix_sum_ = new double[graph->num_edges()];
+        auto prefix_sum_size = sizeof(double) * static_cast<uint64_t>(graph->num_edges());
+        graph->edge_weight_prefix_sum_ = (double*)malloc(prefix_sum_size);
         graph->is_edge_weight_prefix_summed_ = true;
 
 #pragma omp parallel
@@ -151,8 +153,10 @@ template<class F> void static_initialization(Graph* graph, F &f) {
         }
     }
     else if (g_para.sample_ == RejectionSampling) {
-        graph->edge_weight_rejection_ = new double[graph->num_edges()];
-        graph->edge_weight_rejection_max_ = new double[graph->num_vertices()];
+        auto rejection_size = sizeof(double) * static_cast<uint64_t>(graph->num_edges());
+        graph->edge_weight_rejection_ = (double*)malloc(rejection_size);
+        auto rejection_max_size = sizeof(double) * static_cast<uint64_t>(graph->num_vertices());
+        graph->edge_weight_rejection_max_ = (double*)malloc(rejection_max_size);
         graph->is_edge_weight_rejection_generated_ = true;
 
 #pragma omp parallel
@@ -797,6 +801,7 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
 
     ThreadParameter<F> parameters[num_threads];
     pthread_t threads[num_threads];
+    bool thread_started[num_threads];
     pthread_attr_t attr;
     cpu_set_t cpus;
     pthread_attr_init(&attr);
@@ -813,27 +818,44 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
         // set thread affinity.
         CPU_ZERO(&cpus);
         CPU_SET(i, &cpus);
-        int rc = pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        if (rc != 0) {
+        int affinity_rc = pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+        if (affinity_rc != 0) {
             pthread_attr_destroy(&attr);
             pthread_attr_init(&attr);
         }
 
+        int rc = 0;
         if (g_para.execution_ == Uniform) {
-            pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            rc = pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
         }
         else if (g_para.execution_ == Static) {
-            pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            rc = pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
         }
         else {
-            pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            rc = pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+        }
+
+        thread_started[i] = (rc == 0);
+        if (!thread_started[i]) {
+            log_error("pthread_create failed for worker %d (rc=%d). Falling back to inline execution.", i, rc);
+            if (g_para.execution_ == Uniform) {
+                uniform_compute<F>(&parameters[i]);
+            }
+            else if (g_para.execution_ == Static) {
+                static_compute<F>(&parameters[i]);
+            }
+            else {
+                dynamic_compute<F>(&parameters[i]);
+            }
         }
     }
 
 
     uint64_t step_count = 0;
     for (int i = 0; i < num_threads; ++i) {
-        pthread_join(threads[i], NULL);
+        if (thread_started[i]) {
+            pthread_join(threads[i], NULL);
+        }
         step_count += parameters[i].step_count_;
     }
 

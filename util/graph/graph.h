@@ -116,31 +116,31 @@ public:
     }
 
     ~Graph() {
-        delete[] partition_offset_;
+        free(partition_offset_);
         partition_offset_ = nullptr;
-        delete[] offset_;
+        free(offset_);
         offset_ = nullptr;
-        delete[] adj_;
+        free(adj_);
         adj_ = nullptr;
-        delete[] degree_;
+        free(degree_);
         degree_ = nullptr;
-        delete[] vertex_label_;
+        free(vertex_label_);
         vertex_label_ = nullptr;
-        delete[] vertex_weight_;
+        free(vertex_weight_);
         vertex_weight_ = nullptr;
-        delete[] edge_label_;
+        free(edge_label_);
         edge_label_ = nullptr;
-        delete[] edge_weight_;
+        free(edge_weight_);
         edge_weight_ = nullptr;
-        delete[] edge_weight_prefix_sum_;
+        free(edge_weight_prefix_sum_);
         edge_weight_prefix_sum_ = nullptr;
-        delete[] offset_pair_;
+        free(offset_pair_);
         offset_pair_ = nullptr;
-        delete[] edge_weight_alias_table_;
+        free(edge_weight_alias_table_);
         edge_weight_alias_table_ = nullptr;
-        delete[] edge_weight_rejection_;
+        free(edge_weight_rejection_);
         edge_weight_rejection_ = nullptr;
-        delete[] edge_weight_rejection_max_;
+        free(edge_weight_rejection_max_);
         edge_weight_rejection_max_ = nullptr;
     }
 

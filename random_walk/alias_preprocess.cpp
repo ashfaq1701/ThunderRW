@@ -19,7 +19,8 @@ int main(int argc, char *argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
 
     graph.is_edge_weight_alias_generated_ = true;
-    graph.edge_weight_alias_table_ = new AliasSlot[graph.num_edges()];
+    auto alias_size = sizeof(AliasSlot) * static_cast<uint64_t>(graph.num_edges());
+    graph.edge_weight_alias_table_ = (AliasSlot*)malloc(alias_size);
 
 #pragma omp parallel default(none) shared(graph)
     {

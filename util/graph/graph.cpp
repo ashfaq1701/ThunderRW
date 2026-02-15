@@ -84,7 +84,8 @@ void Graph::load_csr(const std::string &graph_dir) {
     }
 
     if (is_offset_pair_) {
-        offset_pair_ = new std::pair<int64_t, int64_t>[num_vertices_];
+        auto size = sizeof(std::pair<int64_t, int64_t>) * static_cast<uint64_t>(num_vertices_);
+        offset_pair_ = (std::pair<int64_t, int64_t>*)malloc(size);
         for (auto i = 0; i < num_vertices_; ++i) {
             offset_pair_[i] = {offset_[i], offset_[i + 1]};
         }
@@ -632,7 +633,8 @@ void Graph::sequential_partition(intT target_num_edges_per_partition) {
     partition_offset.push_back(num_vertices());
 
     num_partitions_ = partition_offset.size() - 1;
-    partition_offset_ = new intT[partition_offset.size()];
+    auto size = sizeof(intT) * partition_offset.size();
+    partition_offset_ = (intT*)malloc(size);
     std::copy(partition_offset.begin(), partition_offset.end(), partition_offset_);
 }
 

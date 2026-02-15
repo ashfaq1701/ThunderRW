@@ -19,7 +19,8 @@ int main(int argc, char *argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
 
     graph.is_edge_weight_rejection_generated_ = true;
-    graph.edge_weight_rejection_max_ = new double[graph.num_vertices_];
+    auto rejection_max_size = sizeof(double) * static_cast<uint64_t>(graph.num_vertices_);
+    graph.edge_weight_rejection_max_ = (double*)malloc(rejection_max_size);
 
 #pragma omp parallel for schedule(dynamic, 1000)
     for (int i = 0; i < graph.num_vertices_; ++i) {
