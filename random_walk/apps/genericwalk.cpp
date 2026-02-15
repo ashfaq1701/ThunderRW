@@ -17,7 +17,7 @@ struct GenericWalk {
     GenericWalk(const GenericWalk& gw) : GenericWalk(gw.l_, gw.g_) {}
 
     inline double weight(WalkerMeta& w, intT begin, intT end, int64_t eid) {
-        return g_->edge_weight_[eid];
+        return g_->is_edge_weighted_ ? g_->edge_weight_[eid] : 1.0;
     }
 
     inline bool update(WalkerMeta& w, intT begin, intT end, int64_t eid) {
