@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <emmintrin.h>
 #include <fstream>
+#include <sched.h>
 #include "config/type_config.h"
 #include "util/utility.h"
 #include "walker_generator.h"
@@ -797,9 +798,21 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
 
     ThreadParameter<F> parameters[num_threads];
     pthread_t threads[num_threads];
+    std::vector<bool> thread_started(num_threads, false);
     pthread_attr_t attr;
     cpu_set_t cpus;
     pthread_attr_init(&attr);
+
+    std::vector<int> available_cpu_ids;
+    cpu_set_t process_cpus;
+    CPU_ZERO(&process_cpus);
+    if (sched_getaffinity(0, sizeof(cpu_set_t), &process_cpus) == 0) {
+        for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+            if (CPU_ISSET(cpu, &process_cpus)) {
+                available_cpu_ids.push_back(cpu);
+            }
+        }
+    }
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -811,28 +824,53 @@ template<class F> void compute(Graph& graph, std::vector<WalkerMeta>& walkers, F
                          tasks[i].first, tasks[i].second, 0, f};
 
         // set thread affinity.
-        CPU_ZERO(&cpus);
-        CPU_SET(i, &cpus);
-        int rc = pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        if (rc != 0) {
-            pthread_attr_destroy(&attr);
-            pthread_attr_init(&attr);
+        bool use_affinity = !available_cpu_ids.empty();
+        if (use_affinity) {
+            CPU_ZERO(&cpus);
+            CPU_SET(available_cpu_ids[i % available_cpu_ids.size()], &cpus);
+            int rc = pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            if (rc != 0) {
+                use_affinity = false;
+                pthread_attr_destroy(&attr);
+                pthread_attr_init(&attr);
+            }
         }
 
+        int create_rc;
         if (g_para.execution_ == Uniform) {
-            pthread_create(&threads[i], &attr, uniform_compute<F>, &parameters[i]);
+            create_rc = pthread_create(&threads[i], use_affinity ? &attr : nullptr, uniform_compute<F>, &parameters[i]);
+            if (create_rc != 0 && use_affinity) {
+                create_rc = pthread_create(&threads[i], nullptr, uniform_compute<F>, &parameters[i]);
+            }
         }
         else if (g_para.execution_ == Static) {
-            pthread_create(&threads[i], &attr, static_compute<F>, &parameters[i]);
+            create_rc = pthread_create(&threads[i], use_affinity ? &attr : nullptr, static_compute<F>, &parameters[i]);
+            if (create_rc != 0 && use_affinity) {
+                create_rc = pthread_create(&threads[i], nullptr, static_compute<F>, &parameters[i]);
+            }
         }
         else {
-            pthread_create(&threads[i], &attr, dynamic_compute<F>, &parameters[i]);
+            create_rc = pthread_create(&threads[i], use_affinity ? &attr : nullptr, dynamic_compute<F>, &parameters[i]);
+            if (create_rc != 0 && use_affinity) {
+                create_rc = pthread_create(&threads[i], nullptr, dynamic_compute<F>, &parameters[i]);
+            }
         }
+
+        if (create_rc != 0) {
+            log_error("Failed to create worker thread %d (errno=%d)", i, create_rc);
+            parameters[i].step_count_ = 0;
+            continue;
+        }
+
+        thread_started[i] = true;
     }
 
 
     uint64_t step_count = 0;
     for (int i = 0; i < num_threads; ++i) {
+        if (!thread_started[i]) {
+            continue;
+        }
         pthread_join(threads[i], NULL);
         step_count += parameters[i].step_count_;
     }
