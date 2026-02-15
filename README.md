@@ -78,6 +78,26 @@ You will see the following files in the data folder: `b_degree.bin`,
 The tool converts the edge list to undirected graph and randomly assigned a label and a weight to each edge.
 We use undirected graphs as the input to keep the workload of random walks queries nearly the same in our experiments.
 
+If you have many `.edgelist` files in one directory and want to convert all of
+them in one shot, use `convert_edgelists_to_csr.sh`:
+
+```zsh
+./convert_edgelists_to_csr.sh <input_dir> <output_dir> [skip_char]
+```
+
+For each `<name>.edgelist` in `<input_dir>`, ThunderRW writes CSR files
+(`b_degree.bin`, `b_adj.bin`, ...) into `<output_dir>/<name>/`. The script
+prints a highlighted timing line after each conversion, e.g.
+`*** Time to convert delicious.edgelist to CSR - 12.345 seconds ***`.
+
+Example:
+
+```zsh
+./convert_edgelists_to_csr.sh \
+  /mnt/lustre/users/inf/ms2420/non-temporal-comparison-datasets/static \
+  /mnt/lustre/users/inf/ms2420/non-temporal-comparison-datasets/static_preprocessed_thunderrw
+```
+
 ## Execution
 
 We implement four algorithms with ThunderRW, which include PPR, DeepWalk,
